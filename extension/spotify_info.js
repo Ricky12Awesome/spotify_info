@@ -36,9 +36,7 @@
       ?.firstElementChild
       ?.src ?? undefined
 
-
     console.log(storage)
-    console.log(data)
   }
 
   Spicetify.CosmosAsync.sub("sp://player/v2/main", updateStorage)
