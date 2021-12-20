@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
-use std::net::{TcpListener, TcpStream};
+use std::iter::FilterMap;
+use std::net::{Incoming, TcpListener, TcpStream};
 
 use tungstenite::{accept, HandshakeError, Message, ServerHandshake, WebSocket};
 use tungstenite::handshake::server::NoCallback;
@@ -115,30 +116,112 @@ pub struct Info {
   pub background_url: Option<String>,
 }
 
-/// Handles the tcp listener connection and incoming connections
+type FilterMapFn = fn(std::io::Result<TcpStream>) -> Option<WebSocket<TcpStream>>;
+
 pub struct TcpConnection {
   server: TcpListener,
+  should_close: bool,
 }
 
 impl TcpConnection {
   pub fn new() -> Result<Self, std::io::Error> {
-    Self::bind(19532)
+    TcpListener::bind("127.0.0.1:19532").map(|server| Self {
+      server,
+      should_close: false,
+    })
   }
 
-  pub fn bind(port: u16) -> Result<Self, std::io::Error> {
-    let server = TcpListener::bind(("127.0.0.1", port))?;
+  pub fn incoming(&self) -> Result<TcpConnectionIter, std::io::Error> {
+    TcpConnectionIter::from(&self.server, &self.should_close)
+  }
 
-    Ok(Self { server })
+  pub fn close(&mut self) {
+    self.should_close = true;
+  }
+}
+
+/// Handles the tcp listener connection and incoming connections
+pub struct TcpConnectionIter<'a> {
+  incoming: FilterMap<Incoming<'a>, FilterMapFn>,
+  should_close: &'a bool,
+  current_connection: Option<WebsocketConnection>,
+}
+
+impl<'a> TcpConnectionIter<'a> {
+  pub fn from(server: &'a TcpListener, should_close: &'a bool) -> Result<Self, std::io::Error> {
+    let filter: FilterMapFn = |it| accept(it.ok()?).ok();
+    let incoming = server.incoming().filter_map(filter);
+
+    Ok(
+      Self {
+        incoming,
+        should_close,
+        current_connection: None,
+      }
+    )
+  }
+}
+
+impl<'a> Iterator for TcpConnectionIter<'a> {
+  type Item = Result<Info, MessageError>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    let mut result = None;
+
+    if *self.should_close {
+      self.current_connection = None;
+      return None;
+    }
+
+    if self.current_connection.is_none() {
+      let ws = self.incoming.next()?;
+      self.current_connection = Some(WebsocketConnection::new(ws));
+    }
+
+    if let Some(ws) = &mut self.current_connection {
+      result = ws.next();
+    }
+
+    if result.is_none() {
+      self.current_connection = None;
+      return self.next();
+    }
+
+    result
   }
 }
 
 /// Handles incoming messages from a websocket
 pub struct WebsocketConnection {
-  socket: WebSocket<TcpStream>
+  should_close: bool,
+  socket: WebSocket<TcpStream>,
 }
 
 impl WebsocketConnection {
+  pub fn new(socket: WebSocket<TcpStream>) -> Self {
+    Self {
+      should_close: false,
+      socket,
+    }
+  }
 
+  pub fn close(&mut self) {
+    self.should_close = true;
+  }
+}
+
+impl Iterator for WebsocketConnection {
+  type Item = Result<Info, MessageError>;
+
+  fn next(&mut self) -> Option<Self::Item> {
+    let message = self.socket.read_message().ok()?;
+
+    if self.should_close || message.is_close() {
+      None
+    } else {
+      Some(handle_message(message))
+    }
+  }
 }
 
 pub fn handle_message(msg: Message) -> Result<Info, MessageError> {
@@ -165,18 +248,12 @@ pub fn handle_message(msg: Message) -> Result<Info, MessageError> {
 }
 
 pub fn websocket() -> Result<()> {
-  let server = TcpListener::bind("127.0.0.1:19532")?;
+  let connection = TcpConnection::new()?;
 
-  for mut ws in server.incoming().filter_map(|it| accept(it.ok()?).ok()) {
-    loop {
-      let message = ws.read_message()?;
-
-      if let Message::Close(_) = message {
-        break;
-      }
-
-      let message = handle_message(message)?;
-      println!("{message:?}");
+  for message in connection.incoming()? {
+    match message {
+      Ok(info) => println!("{:?}", info),
+      Err(err) => eprintln!("{:?}", err),
     }
   }
 
