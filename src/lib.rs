@@ -3,9 +3,35 @@ use std::thread::spawn;
 
 use tungstenite::{accept, Message};
 
+#[repr(u32)]
+#[derive(Debug, Clone)]
+pub enum State {
+  Playing = 2,
+  Paused = 1,
+  Stopped = 0,
+}
+
+impl State {
+  pub fn from_u32(n: u32) -> State {
+    match n {
+      2 => State::Playing,
+      1 => State::Paused,
+      _ => State::Stopped
+    }
+  }
+}
+
+impl Default for State {
+  fn default() -> Self {
+    Self::Stopped
+  }
+}
+
 /// Stores information about the track
 #[derive(Debug, Clone, Default)]
 pub struct Info {
+  /// State of the track
+  pub state: State,
   /// Title of the track
   pub title: String,
   /// Album of the track
@@ -29,16 +55,16 @@ pub fn websocket() {
       loop {
         let msg = websocket.read_message().unwrap();
 
-        // We do not want to send back ping/pong messages.
         if let Message::Text(msg) = msg {
           let data = msg.split(';').collect::<Vec<_>>();
 
           let info = Info {
-            title: data[0].to_string(),
-            album: data[1].to_string(),
-            artist: vec![data[2].to_string()],
-            cover_url: Some(data[3].to_string()),
-            background_url: Some(data[4].to_string()),
+            state: State::from_u32(data[0].parse().unwrap()),
+            title: data[1].to_string(),
+            album: data[2].to_string(),
+            artist: vec![data[3].to_string()],
+            cover_url: Some(data[4].to_string()),
+            background_url: Some(data[5].to_string()),
           };
 
           println!("{info:?}");
