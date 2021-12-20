@@ -10,6 +10,17 @@ This will work for all desktop platforms (Windows, Linux, macOS)
 
 ## Install/Uninstall Spicetify Extension
 
+### Script
+Run script to install, uninstall by running it again
+#### Windows (Not made yet)
+```sh
+not made yet, coming soon once I get on windows
+```
+#### Linux / macOS
+```sh
+curl https://raw.githubusercontent.com/Ricky12Awesome/spotify_info/main/extension/install_extention.sh | sh
+```
+
 ### Manual
 You can get the extension from 
 [here](https://raw.githubusercontent.com/Ricky12Awesome/spotify_info/main/extension/spotify_info.js)
@@ -17,7 +28,7 @@ You can get the extension from
 
 Place that file 
 to `%userprofile%\.spicetify\Extensions\` on Windows 
-or `~/.config/spicetify/Extensions` on Linux/macOS 
+or `~/.config/spicetify/Extensions` on Linux / macOS 
 
 ##### Install
 Run command
