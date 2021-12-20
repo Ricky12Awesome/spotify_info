@@ -12,7 +12,7 @@ This will work for all desktop platforms (Windows, Linux, macOS)
 
 ### Manual
 You can get the extension from 
-[here](https://raw.githubusercontent.com/Ricky12Awesome/spotify_info/main/extention/spotify_info.js)
+[here](https://raw.githubusercontent.com/Ricky12Awesome/spotify_info/main/extension/spotify_info.js)
 (right-click -> save as)
 
 Place that file 
