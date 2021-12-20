@@ -20,14 +20,14 @@ to `%userprofile%\.spicetify\Extensions\` on Windows
 or `~/.config/spicetify/Extensions` on Linux/macOS 
 
 ##### Install
-Then run this command
+Run command
 `spicetify config extensions spotify_info.js && spicetify apply` 
 from the terminal to install the plugin
 
 ##### Uninstall
-Then run this command
+Run command
 `spicetify config extensions -spotify_info.js && spicetify apply`
-from the terminal to install the plugin
+from the terminal to uninstall the plugin
 
 More details about install extensions https://spicetify.app/docs/getting-started/extensions
 
