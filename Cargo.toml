@@ -1,0 +1,16 @@
+[package]
+name = "spotify_info"
+version = "0.1.0"
+edition = "2021"
+authors = ["Ricky12Awesome"]
+description = "Gets metadata from spotify using a spicetify extension using websockets"
+readme = "README.md"
+license = "MIT"
+license-file = "LICENSE"
+repository = "https://github.com/Ricky12Awesome/spotify_info"
+homepage = "https://github.com/Ricky12Awesome/spotify_info"
+exclude = ["extension"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

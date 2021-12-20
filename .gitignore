@@ -1,0 +1,5 @@
+/target
+.idea/
+# https://github.com/khanhas/spicetify-cli/blob/master/globals.d.ts
+extension/globals.d.ts
+Cargo.lock
