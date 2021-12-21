@@ -1,3 +1,5 @@
+[![crates.io](https://img.shields.io/crates/v/spotify_info.svg)](https://crates.io/crates/spotify_info)
+
 # Spotify Info
 Gets metadata from spotify using a 
 [spicetify](https://github.com/khanhas/spicetify-cli) 
@@ -43,7 +45,7 @@ from the terminal to uninstall the plugin
 More details about install extensions https://spicetify.app/docs/getting-started/extensions
 
 ## Use API
-### Add this to your cargo.toml dependencies
+### Add this to your Cargo.toml dependencies
 ```toml
 spotify_info = "0.1.0"
 ```
