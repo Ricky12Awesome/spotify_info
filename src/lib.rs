@@ -1,3 +1,9 @@
+//! Gets metadata from spotify using a
+//! [spicetify](https://github.com/khanhas/spicetify-cli)
+//! extension using websockets
+//!
+//! More information can be found on https://github.com/Ricky12Awesome/spotify_info
+
 use std::fmt::{Display, Formatter};
 use std::iter::FilterMap;
 use std::net::{Incoming, TcpListener, TcpStream};
@@ -74,6 +80,9 @@ impl From<tungstenite::Error> for MessageError {
 }
 //endregion errors
 
+/// The state of the track weather it's **Playing**, **Paused** or **Stopped**
+///
+/// Default: Stopped
 #[repr(u32)]
 #[derive(Debug, Clone)]
 pub enum State {
@@ -83,11 +92,16 @@ pub enum State {
 }
 
 impl State {
-  pub fn from_u32(n: u32) -> State {
+  /// 2 will be [Self::Playing]
+  ///
+  /// 1 will be [Self::Paused]
+  ///
+  /// anything else will be [Self::Stopped]
+  pub fn from_u32(n: u32) -> Self {
     match n {
-      2 => State::Playing,
-      1 => State::Paused,
-      _ => State::Stopped
+      2 => Self::Playing,
+      1 => Self::Paused,
+      _ => Self::Stopped
     }
   }
 }
@@ -118,36 +132,54 @@ pub struct Info {
 
 type FilterMapFn = fn(std::io::Result<TcpStream>) -> Option<WebSocket<TcpStream>>;
 
-pub struct TcpConnection {
-  server: TcpListener,
+/// Listens to incoming messages from spotify to
+/// get information about the currently playing track
+///
+/// **Requires having the spicetify extension installed
+/// so it can send messages to this listener
+/// which can be found here**
+///
+/// https://github.com/Ricky12Awesome/spotify_info#installuninstall-spicetify-extension
+pub struct Listener {
+  listener: TcpListener,
   should_close: bool,
 }
 
-impl TcpConnection {
+impl Listener {
+  /// Creates a [TcpListener] bound on `127.0.0.1:19532`
   pub fn new() -> Result<Self, std::io::Error> {
-    TcpListener::bind("127.0.0.1:19532").map(|server| Self {
-      server,
+    Self::bind(19532)
+  }
+
+  /// Creates a [TcpListener] bound on `127.0.0.1` with the given port
+  pub fn bind(port: u16) -> Result<Self, std::io::Error>  {
+    TcpListener::bind(("127.0.0.1", port)).map(|listener| Self {
+      listener,
       should_close: false,
     })
   }
 
-  pub fn incoming(&self) -> Result<TcpConnectionIter, std::io::Error> {
-    TcpConnectionIter::from(&self.server, &self.should_close)
+  /// Iterates for every message, waits until it finds a connection, if that connection closes
+  /// it will wait for another connection and so on.
+  /// to stop this from iterating use [Self::close]
+  pub fn incoming(&self) -> Result<ListenerIter, std::io::Error> {
+    ListenerIter::from(&self.listener, &self.should_close)
   }
 
+  /// Closes the listener and will make [Self::incoming] stop iterating
   pub fn close(&mut self) {
     self.should_close = true;
   }
 }
 
-/// Handles the tcp listener connection and incoming connections
-pub struct TcpConnectionIter<'a> {
+/// Handles the tcp listener and any incoming messages
+pub struct ListenerIter<'a> {
   incoming: FilterMap<Incoming<'a>, FilterMapFn>,
   should_close: &'a bool,
   current_connection: Option<WebsocketConnection>,
 }
 
-impl<'a> TcpConnectionIter<'a> {
+impl<'a> ListenerIter<'a> {
   pub fn from(server: &'a TcpListener, should_close: &'a bool) -> Result<Self, std::io::Error> {
     let filter: FilterMapFn = |it| accept(it.ok()?).ok();
     let incoming = server.incoming().filter_map(filter);
@@ -162,7 +194,7 @@ impl<'a> TcpConnectionIter<'a> {
   }
 }
 
-impl<'a> Iterator for TcpConnectionIter<'a> {
+impl<'a> Iterator for ListenerIter<'a> {
   type Item = Result<Info, MessageError>;
 
   fn next(&mut self) -> Option<Self::Item> {
@@ -217,45 +249,29 @@ impl Iterator for WebsocketConnection {
     let message = self.socket.read_message().ok()?;
 
     if self.should_close || message.is_close() {
-      None
-    } else {
-      Some(handle_message(message))
-    }
-  }
-}
-
-pub fn handle_message(msg: Message) -> Result<Info, MessageError> {
-  if let Message::Text(msg) = msg {
-    let data = msg.split(';').collect::<Vec<_>>();
-
-    if data.len() < 6 {
-      return Err(MessageError::Invalid);
+      return None;
     }
 
-    let info = Info {
-      state: State::from_u32(data[0].parse().unwrap_or(0)),
-      title: data[1].to_string(),
-      album: data[2].to_string(),
-      artist: vec![data[3].to_string()],
-      cover_url: Some(data[4].to_string()),
-      background_url: Some(data[5].to_string()),
-    };
-
-    Ok(info)
-  } else {
-    Err(MessageError::Invalid)
-  }
-}
-
-pub fn websocket() -> Result<()> {
-  let connection = TcpConnection::new()?;
-
-  for message in connection.incoming()? {
     match message {
-      Ok(info) => println!("{:?}", info),
-      Err(err) => eprintln!("{:?}", err),
+      Message::Text(msg) => {
+        let data = msg.split(';').collect::<Vec<_>>();
+
+        if data.len() < 6 {
+          return Some(Err(MessageError::Invalid));
+        }
+
+        let info = Info {
+          state: State::from_u32(data[0].parse().unwrap_or(0)),
+          title: data[1].to_string(),
+          album: data[2].to_string(),
+          artist: vec![data[3].to_string()],
+          cover_url: Some(data[4].to_string()),
+          background_url: Some(data[5].to_string()),
+        };
+
+        Some(Ok(info))
+      }
+      _ => Some(Err(MessageError::Invalid))
     }
   }
-
-  Ok(())
 }

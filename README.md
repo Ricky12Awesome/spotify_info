@@ -10,7 +10,7 @@ This will work for all desktop platforms (Windows, Linux, macOS)
 
 ## Install/Uninstall Spicetify Extension
 
-### Script
+### Auto Install
 Run script to install, uninstall by running it again
 #### Windows (Not made yet)
 ```sh
@@ -37,7 +37,7 @@ from the terminal to install the plugin
 
 ##### Uninstall
 Run command
-`spicetify config extensions -spotify_info.js && spicetify apply`
+`spicetify config extensions spotify_info.js- && spicetify apply`
 from the terminal to uninstall the plugin
 
 More details about install extensions https://spicetify.app/docs/getting-started/extensions
@@ -49,4 +49,4 @@ More details about install extensions https://spicetify.app/docs/getting-started
 spotify_info = { git = "https://github.com/Ricky12Awesome/spotify_info" }
 ```
 
-**API Usage is WIP**
+Examples can be found in the [examples](https://github.com/Ricky12Awesome/spotify_info/tree/main/examples) directory 
