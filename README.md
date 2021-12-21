@@ -18,11 +18,11 @@ This will work for all desktop platforms (Windows, Linux, macOS)
 Run script to install, uninstall by running it again
 #### Windows (Not made yet)
 ```sh
-not made yet, coming soon once I get on windows
+Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/Ricky12Awesome/spotify_info/main/extension/install_extension.ps1" | Invoke-Expression
 ```
 #### Linux / macOS
 ```sh
-curl https://raw.githubusercontent.com/Ricky12Awesome/spotify_info/main/extension/install_extention.sh | sh
+curl https://raw.githubusercontent.com/Ricky12Awesome/spotify_info/main/extension/install_extension.sh | sh
 ```
 
 ### Manual
