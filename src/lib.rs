@@ -7,6 +7,7 @@
 use std::fmt::{Display, Formatter};
 use std::iter::FilterMap;
 use std::net::{Incoming, TcpListener, TcpStream};
+use std::sync::{Arc, Mutex};
 
 use tungstenite::{accept, HandshakeError, Message, ServerHandshake, WebSocket};
 use tungstenite::handshake::server::NoCallback;
@@ -142,7 +143,30 @@ type FilterMapFn = fn(std::io::Result<TcpStream>) -> Option<WebSocket<TcpStream>
 /// https://github.com/Ricky12Awesome/spotify_info#installuninstall-spicetify-extension
 pub struct Listener {
   listener: TcpListener,
-  should_close: bool,
+  handle: Arc<Mutex<Handle>>,
+}
+
+/// Handles the current connection
+#[derive(Default)]
+pub struct Handle {
+  is_closed: bool,
+  current_connection: Option<WebsocketConnection>,
+}
+
+impl Handle {
+  pub fn new() -> Arc<Mutex<Self>> {
+    Arc::new(Mutex::new(Self::default()))
+  }
+
+  pub fn close(&mut self) {
+    self.is_closed = true;
+
+    if let Some(ws) = &mut self.current_connection {
+      ws.close().unwrap()
+    }
+
+    self.current_connection = None;
+  }
 }
 
 impl Listener {
@@ -151,44 +175,51 @@ impl Listener {
     Self::bind(19532)
   }
 
+  /// Creates a [TcpListener] bound on `127.0.0.1:19532`
+  pub fn new_with_handle(handle: Arc<Mutex<Handle>>) -> Result<Self, std::io::Error> {
+    Self::bind_with_handle(19532, handle)
+  }
+
   /// Creates a [TcpListener] bound on `127.0.0.1` with the given port
-  pub fn bind(port: u16) -> Result<Self, std::io::Error>  {
+  pub fn bind(port: u16) -> Result<Self, std::io::Error> {
+    Self::bind_with_handle(port, Handle::new())
+  }
+
+  /// Creates a [TcpListener] bound on `127.0.0.1` with the given port
+  pub fn bind_with_handle(port: u16, handle: Arc<Mutex<Handle>>) -> Result<Self, std::io::Error> {
     TcpListener::bind(("127.0.0.1", port)).map(|listener| Self {
       listener,
-      should_close: false,
+      handle,
     })
   }
 
   /// Iterates for every message, waits until it finds a connection, if that connection closes
   /// it will wait for another connection and so on.
   /// to stop this from iterating use [Self::close]
+  /// or set the close handle to true
   pub fn incoming(&self) -> Result<ListenerIter, std::io::Error> {
-    ListenerIter::from(&self.listener, &self.should_close)
+    ListenerIter::from(&self.listener, self.handle.clone())
   }
 
   /// Closes the listener and will make [Self::incoming] stop iterating
-  pub fn close(&mut self) {
-    self.should_close = true;
-  }
+  pub fn close(&self) {}
 }
 
 /// Handles the tcp listener and any incoming messages
 pub struct ListenerIter<'a> {
   incoming: FilterMap<Incoming<'a>, FilterMapFn>,
-  should_close: &'a bool,
-  current_connection: Option<WebsocketConnection>,
+  handle: Arc<Mutex<Handle>>,
 }
 
 impl<'a> ListenerIter<'a> {
-  pub fn from(server: &'a TcpListener, should_close: &'a bool) -> Result<Self, std::io::Error> {
+  pub fn from(server: &'a TcpListener, handle: Arc<Mutex<Handle>>) -> Result<Self, std::io::Error> {
     let filter: FilterMapFn = |it| accept(it.ok()?).ok();
     let incoming = server.incoming().filter_map(filter);
 
     Ok(
       Self {
         incoming,
-        should_close,
-        current_connection: None,
+        handle,
       }
     )
   }
@@ -199,24 +230,28 @@ impl<'a> Iterator for ListenerIter<'a> {
 
   fn next(&mut self) -> Option<Self::Item> {
     let mut result = None;
+    let mut handle = self.handle.lock().unwrap();
 
-    if *self.should_close {
-      self.current_connection = None;
-      return None;
-    }
+    loop {
+      if handle.is_closed {
+        return None;
+      }
 
-    if self.current_connection.is_none() {
-      let ws = self.incoming.next()?;
-      self.current_connection = Some(WebsocketConnection::new(ws));
-    }
+      if handle.current_connection.is_none() {
+        let ws = self.incoming.next()?;
+        handle.current_connection = Some(WebsocketConnection::new(ws));
+      }
 
-    if let Some(ws) = &mut self.current_connection {
-      result = ws.next();
-    }
+      if let Some(ws) = &mut handle.current_connection {
+        result = ws.next();
+      }
 
-    if result.is_none() {
-      self.current_connection = None;
-      return self.next();
+      if result.is_none() && !handle.is_closed {
+        handle.current_connection = None;
+        continue;
+      }
+
+      break;
     }
 
     result
@@ -225,20 +260,18 @@ impl<'a> Iterator for ListenerIter<'a> {
 
 /// Handles incoming messages from a websocket
 pub struct WebsocketConnection {
-  should_close: bool,
   socket: WebSocket<TcpStream>,
 }
 
 impl WebsocketConnection {
   pub fn new(socket: WebSocket<TcpStream>) -> Self {
     Self {
-      should_close: false,
       socket,
     }
   }
 
-  pub fn close(&mut self) {
-    self.should_close = true;
+  pub fn close(&mut self) -> Result<()> {
+    Ok(self.socket.close(None)?)
   }
 }
 
@@ -248,11 +281,8 @@ impl Iterator for WebsocketConnection {
   fn next(&mut self) -> Option<Self::Item> {
     let message = self.socket.read_message().ok()?;
 
-    if self.should_close || message.is_close() {
-      return None;
-    }
-
     match message {
+      Message::Close(_) => None,
       Message::Text(msg) => {
         let data = msg.split(';').collect::<Vec<_>>();
 

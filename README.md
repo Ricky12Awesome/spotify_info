@@ -59,7 +59,7 @@ More details about install extensions https://spicetify.app/docs/getting-started
 ## Use API
 ### Add this to your Cargo.toml dependencies
 ```toml
-spotify_info = "0.1.0"
+spotify_info = "0.1"
 ```
 
 Examples can be found in the [examples](https://github.com/Ricky12Awesome/spotify_info/tree/main/examples) directory 
