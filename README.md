@@ -12,15 +12,25 @@ since Windows doesn't offer anyway to do this, on Linux I could use MPRIS, for m
 
 This will work for all desktop platforms (Windows, Linux, macOS)
 
+## Plans
+- Improve Documentation
+- Make instructions easy to understand for regular users
+- Async/Await support
+- Track Length and Position support
+- When the track was created
+- What playlist the track is in
+
 ## Install/Uninstall Spicetify Extension
 
 ### Auto Install
 Run script to install, uninstall by running it again
-#### Windows (Not made yet)
+#### Windows
+Open `PowerShell` (Win + S) type powershell and press enter and run this command
 ```sh
 Invoke-WebRequest -UseBasicParsing "https://raw.githubusercontent.com/Ricky12Awesome/spotify_info/main/extension/install_extension.ps1" | Invoke-Expression
 ```
 #### Linux / macOS
+Open `Terminal` (usually Ctrl + Alt + T on linux) and run this command
 ```sh
 curl https://raw.githubusercontent.com/Ricky12Awesome/spotify_info/main/extension/install_extension.sh | sh
 ```
