@@ -1,4 +1,6 @@
 [![crates.io](https://img.shields.io/crates/v/spotify_info.svg)](https://crates.io/crates/spotify_info)
+[![docs.rs](https://docs.rs/spotify_info/badge.svg)](https://crates.io/crates/spotify_info)
+[![license](https://img.shields.io/github/license/Ricky12Awesome/spotify_info)](https://github.com/Ricky12Awesome/spotify_info/blob/main/LICENSE)
 
 # Spotify Info
 Gets metadata from spotify using a 
