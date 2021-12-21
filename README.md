@@ -43,10 +43,9 @@ from the terminal to uninstall the plugin
 More details about install extensions https://spicetify.app/docs/getting-started/extensions
 
 ## Use API
-### Install
+### Add this to your cargo.toml dependencies
 ```toml
-# Currently not on crates.io so you can use it using this
-spotify_info = { git = "https://github.com/Ricky12Awesome/spotify_info" }
+spotify_info = "0.1.0"
 ```
 
 Examples can be found in the [examples](https://github.com/Ricky12Awesome/spotify_info/tree/main/examples) directory 
