@@ -22,11 +22,13 @@ fn main() {
     }
   });
 
-  // This will close the listener after 5 seconds
+  // This will close the listener after 3 seconds
   spawn(move || {
     sleep(Duration::from_secs(3));
 
+    println!("Closed!");
     handle_src.lock().unwrap().deref_mut().close();
+    println!("Closed!");
   }).join().unwrap();
 
   thread.join().unwrap();

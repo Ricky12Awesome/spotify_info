@@ -11,6 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use tungstenite::{accept, HandshakeError, Message, ServerHandshake, WebSocket};
 use tungstenite::handshake::server::NoCallback;
+use tungstenite::protocol::CloseFrame;
+use tungstenite::protocol::frame::coding::CloseCode;
 
 //region errors
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -162,10 +164,8 @@ impl Handle {
     self.is_closed = true;
 
     if let Some(ws) = &mut self.current_connection {
-      ws.close().unwrap()
+      ws.close().unwrap();
     }
-
-    self.current_connection = None;
   }
 }
 
@@ -230,9 +230,10 @@ impl<'a> Iterator for ListenerIter<'a> {
 
   fn next(&mut self) -> Option<Self::Item> {
     let mut result = None;
-    let mut handle = self.handle.lock().unwrap();
 
     loop {
+      let mut handle = self.handle.lock().unwrap();
+
       if handle.is_closed {
         return None;
       }
@@ -240,6 +241,7 @@ impl<'a> Iterator for ListenerIter<'a> {
       if handle.current_connection.is_none() {
         let ws = self.incoming.next()?;
         handle.current_connection = Some(WebsocketConnection::new(ws));
+        continue;
       }
 
       if let Some(ws) = &mut handle.current_connection {
@@ -271,7 +273,12 @@ impl WebsocketConnection {
   }
 
   pub fn close(&mut self) -> Result<()> {
-    Ok(self.socket.close(None)?)
+    self.socket.write_message(Message::Text("Closing".to_string()))?;
+
+    Ok(self.socket.close(Some(CloseFrame {
+      code: CloseCode::Away,
+      reason: "Server is closing".into(),
+    }))?)
   }
 }
 
