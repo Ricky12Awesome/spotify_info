@@ -4,12 +4,13 @@
 
 /// <reference path="globals.d.ts" />
 
-(function SpotifyInfo() {
+function SpotifyInfo() {
   if (!Spicetify.CosmosAsync || !Spicetify.Platform) {
     setTimeout(SpotifyInfo, 500);
     return;
   }
 
+  let ws;
   let storage = {
     state: undefined,
     title: undefined,
@@ -18,8 +19,6 @@
     cover: undefined,
     background: undefined
   };
-
-  let ws;
 
   async function updateStorage(data) {
     if (!data?.track?.metadata) {
@@ -38,14 +37,14 @@
 
     // doing local === storage or local == storage doesn't work,
     // so I needed to do this
-    const storage_eq = () => {
+    function storage_eq() {
       return local.state === storage.state &&
         local.title === storage.title &&
         local.album === storage.album &&
         local.artist === storage.artist &&
         local.cover === storage.cover &&
         local.background === storage.background;
-    };
+    }
 
     local.state = data.is_paused ? 1 : 2;
     local.title = meta.title;
@@ -82,16 +81,20 @@
 
   Spicetify.CosmosAsync.sub("sp://player/v2/main", updateStorage);
 
-  (function init() {
+  function init() {
     ws = new WebSocket("ws://127.0.0.1:19532");
 
     ws.onclose = () => {
-      setTimeout(init, 2000);
+      setTimeout(init, 1000);
     };
-  })();
+  }
+
+  init()
 
   window.onbeforeunload = () => {
     ws.onclose = null;
     ws.close();
   }
-})();
+}
+
+SpotifyInfo()
