@@ -26,9 +26,9 @@ fn main() {
   spawn(move || {
     sleep(Duration::from_secs(3));
 
-    println!("Before calling closed");
+    println!("Closed!");
     handle_src.lock().unwrap().deref_mut().close();
-    println!("After calling closed");
+    println!("Closed!");
   }).join().unwrap();
 
   thread.join().unwrap();
