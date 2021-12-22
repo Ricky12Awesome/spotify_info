@@ -14,4 +14,3 @@ exclude = ["extension"]
 
 [dependencies]
 tungstenite = "0.16.0"
-mio = { version = "0.8.0", features = ["net", "os-poll"] }
