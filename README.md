@@ -13,12 +13,13 @@ since Windows doesn't offer anyway to do this, on Linux I could use MPRIS, for m
 This will work for all desktop platforms (Windows, Linux, macOS)
 
 ## Plans
-- Improve Documentation
-- Make instructions easy to understand for regular users
-- Async/Await support
-- Track Length and Position support
-- When the track was created
-- What playlist the track is in
+- [ ] Improve Documentation
+- [ ] Make instructions easy to understand for regular users
+- [x] ~~Async/Await support~~
+- [ ] Wait for new messages (currently when you call Handle::read, it gets the latest)
+- [ ] Track Length and Position support
+- [ ] When the track was created
+- [ ] What playlist the track is in
 
 ## Install/Uninstall Spicetify Extension
 
@@ -57,9 +58,9 @@ from the terminal to uninstall the plugin
 More details about install extensions https://spicetify.app/docs/getting-started/extensions
 
 ## Use API
-### Add this to your Cargo.toml dependencies
+#### Add this to your Cargo.toml dependencies
 ```toml
-spotify_info = "0.1"
+spotify_info = "0.2"
 ```
 
 Examples can be found in the [examples](https://github.com/Ricky12Awesome/spotify_info/tree/main/examples) directory 

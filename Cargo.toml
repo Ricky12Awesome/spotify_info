@@ -1,6 +1,6 @@
 [package]
 name = "spotify_info"
-version = "0.1.2"
+version = "0.2.0"
 edition = "2021"
 authors = ["Ricky12Awesome"]
 description = "Gets metadata from spotify using a spicetify extension using websockets"
@@ -13,4 +13,13 @@ exclude = ["extension"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tungstenite = "0.16.0"
+tokio-tungstenite = "0.16"
+futures-channel = "0.3"
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+tokio = { version = "1.15", default-features = false, features = ["net"] }
+
+[dev-dependencies.tokio]
+version = "1.15"
+default-features = false
+features = ["io-std", "macros", "net", "rt-multi-thread", "time"]
+

@@ -84,13 +84,7 @@ function SpotifyInfo() {
   function init() {
     ws = new WebSocket("ws://127.0.0.1:19532");
 
-    ws.onmessage = msg => {
-      console.log(msg);
-    }
-
-    ws.onclose = close => {
-      console.log(close);
-
+    ws.onclose = () => {
       setTimeout(init, 1000);
     };
   }

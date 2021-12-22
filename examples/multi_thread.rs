@@ -1,35 +1,36 @@
-use std::ops::DerefMut;
-use std::thread::{sleep, spawn};
 use std::time::Duration;
-use spotify_info::Handle;
 
-fn main() {
-  // Create source handle
-  let handle_src = Handle::new();
-  // Clone it to be used in another thread
-  let handle = handle_src.clone();
+use spotify_info::{Handle, Listener};
+
+#[tokio::main]
+async fn main() {
+  // Create handle to be used for the main thread
+  // that will constantly listen for incoming calls
+  let main_handle = Handle::default();
+  // clones that handle to be used on another thread
+  let handle = main_handle.clone();
 
   // Create thread that will constantly listen for incoming calls
-  let thread = spawn(move || {
-    let server = spotify_info::Listener::new_with_handle(handle).unwrap();
+  let main = tokio::spawn(async {
+    let listener = Listener::bind_default().await.unwrap();
+    listener.listen(main_handle).await;
+  });
 
-    // This will not close instantly,
-    for message in server.incoming().unwrap() {
-      match message {
-        Ok(info) => println!("{:?}", info),
-        Err(err) => eprintln!("{:?}", err),
-      }
+  // Creates a reading thread, since reading currently
+  // just gets the latest TrackInfo and wll not wait until
+  // the next message is sent
+  let reading = tokio::spawn(async move {
+    loop {
+      let read = handle.read();
+      println!("{:?}", read);
+      tokio::time::sleep(Duration::from_millis(500)).await;
     }
   });
 
-  // This will close the listener after 3 seconds
-  spawn(move || {
-    sleep(Duration::from_secs(3));
-
-    println!("Closed!");
-    handle_src.lock().unwrap().deref_mut().close();
-    println!("Closed!");
-  }).join().unwrap();
-
-  thread.join().unwrap();
+  // Waits 5 seconds to stop the threads
+  tokio::time::sleep(Duration::from_secs(5)).await;
+  // You would need to abort main thread to stop it
+  main.abort();
+  // Since reading is an infinite loop, stop that as well
+  reading.abort();
 }
