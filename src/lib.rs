@@ -176,10 +176,6 @@ impl Handle {
   }
 }
 
-unsafe impl Send for Handle {}
-
-unsafe impl Sync for Handle {}
-
 impl Listener {
   /// Creates a [TcpListener] bound on `127.0.0.1:19532`
   pub fn new() -> Result<Self, std::io::Error> {
@@ -239,7 +235,7 @@ impl<'a> ListenerIter<'a> {
   }
 }
 
-impl<'a> Iterator for &'a mut ListenerIter<'a> {
+impl<'a> Iterator for ListenerIter<'a> {
   type Item = Result<Info, MessageError>;
 
   fn next(&mut self) -> Option<Self::Item> {
@@ -268,22 +264,12 @@ impl<'a> Iterator for &'a mut ListenerIter<'a> {
             break;
           }
 
+
           if let Some(stream) = &mut self.stream {
             self.listener.poll.registry()
-              .register(stream.by_ref(), CLIENT, Interest::READABLE | Interest::WRITABLE).ok()?;
+              .register(stream, CLIENT, Interest::READABLE | Interest::WRITABLE).ok()?;
 
-            let mut socket = None;
-
-            loop {
-              if socket.is_none() {
-                socket = accept(stream as &TcpStream).ok();
-                continue;
-              }
-
-              break;
-            }
-
-            let connection = WebsocketConnection::new(socket.unwrap());
+            let connection = WebsocketConnection::<'a>::new(stream as &_);
             self.connection = Some(connection);
           }
         }
@@ -317,18 +303,35 @@ impl<'a> Iterator for &'a mut ListenerIter<'a> {
 
 /// Handles incoming messages from a websocket
 pub struct WebsocketConnection<'a> {
-  socket: WebSocket<&'a TcpStream>,
+  stream: &'a TcpStream,
+  socket: Option<WebSocket<&'a TcpStream>>,
 }
 
 impl<'a> WebsocketConnection<'a> {
-  pub fn new(socket: WebSocket<&'a TcpStream>) -> Self {
+  pub fn new(stream: &'a TcpStream) -> Self {
     Self {
-      socket,
+      stream,
+      socket: None,
+    }
+  }
+
+  fn init(&mut self) {
+    loop {
+      if self.socket.is_none() {
+        self.socket = accept(self.stream).ok();
+        continue;
+      }
+
+      break;
     }
   }
 
   pub fn close(&mut self) -> Result<()> {
-    Ok(self.socket.close(Some(CloseFrame {
+    if self.socket.is_none() {
+      return Ok(());
+    }
+
+    Ok(self.socket.as_mut().unwrap().close(Some(CloseFrame {
       code: CloseCode::Away,
       reason: "Server is closing".into(),
     }))?)
@@ -339,7 +342,8 @@ impl<'a> Iterator for WebsocketConnection<'a> {
   type Item = Result<Info, MessageError>;
 
   fn next(&mut self) -> Option<Self::Item> {
-    let message = self.socket.read_message().ok()?;
+    self.init();
+    let message = self.socket.as_mut().unwrap().read_message().ok()?;
 
     match message {
       Message::Close(_) => None,
