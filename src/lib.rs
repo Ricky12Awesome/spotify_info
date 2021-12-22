@@ -225,12 +225,13 @@ impl Listener {
 /// Handles the tcp listener and any incoming messages
 pub struct ListenerIter<'a> {
   listener: &'a mut Listener,
+  stream: Option<TcpStream>,
   connection: Option<WebsocketConnection<'a>>,
 }
 
 impl<'a> ListenerIter<'a> {
   pub fn from(listener: &'a mut Listener) -> Result<Self, std::io::Error> {
-    Ok(Self { listener, connection: None })
+    Ok(Self { listener, stream: None, connection: None })
   }
 }
 
@@ -245,31 +246,32 @@ impl<'a> Iterator for ListenerIter<'a> {
     for event in &self.listener.events {
       match event.token() {
         SERVER => {
-          // loop {
-          //   if should_close() {
-          //     break;
-          //   }
-          //
-          //   let stream = self.listener.listener.accept().ok();
-          //
-          //   if stream.is_none() {
-          //     continue;
-          //   }
-          //
-          //   let stream = stream.unwrap().0;
-          //
-          //   self.stream = Some(stream);
-          //
-          //   break;
-          // }
-          //
-          // if let Some(stream) = &mut self.stream {
-          //   self.listener.poll.registry()
-          //     .register(stream, CLIENT, Interest::READABLE | Interest::WRITABLE).ok()?;
-          //
-          //   let connection = WebsocketConnection::<'a>::new(stream as &_);
-          //   self.connection = Some(connection);
-          // }
+          loop {
+            if should_close() {
+              break;
+            }
+
+            let stream = self.listener.listener.accept().ok();
+
+            if stream.is_none() {
+              continue;
+            }
+
+            let stream = stream.unwrap().0;
+
+            self.stream = Some(stream);
+
+            break;
+          }
+
+
+          if let Some(stream) = &mut self.stream {
+            self.listener.poll.registry()
+              .register(stream, CLIENT, Interest::READABLE | Interest::WRITABLE).ok()?;
+
+            let connection = WebsocketConnection::<'a>::new(stream as &_);
+            self.connection = Some(connection);
+          }
         }
 
         CLIENT => {
@@ -301,15 +303,26 @@ impl<'a> Iterator for ListenerIter<'a> {
 
 /// Handles incoming messages from a websocket
 pub struct WebsocketConnection<'a> {
-  stream: TcpStream,
+  stream: &'a TcpStream,
   socket: Option<WebSocket<&'a TcpStream>>,
 }
 
 impl<'a> WebsocketConnection<'a> {
-  pub fn new(stream: TcpStream) -> Self {
+  pub fn new(stream: &'a TcpStream) -> Self {
     Self {
       stream,
       socket: None,
+    }
+  }
+
+  fn init(&mut self) {
+    loop {
+      if self.socket.is_none() {
+        self.socket = accept(self.stream).ok();
+        continue;
+      }
+
+      break;
     }
   }
 
@@ -325,17 +338,11 @@ impl<'a> WebsocketConnection<'a> {
   }
 }
 
-impl<'a> WebsocketConnection<'a> {
-  fn next(&'a mut self) -> Option<Result<Info, MessageError>> {
-    loop {
-      if self.socket.is_none() {
-        self.socket = accept(&self.stream).ok();
-        continue;
-      }
+impl<'a> Iterator for WebsocketConnection<'a> {
+  type Item = Result<Info, MessageError>;
 
-      break;
-    }
-
+  fn next(&mut self) -> Option<Self::Item> {
+    self.init();
     let message = self.socket.as_mut().unwrap().read_message().ok()?;
 
     match message {
