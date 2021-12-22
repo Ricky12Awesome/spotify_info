@@ -27,6 +27,7 @@ fn main() {
     sleep(Duration::from_secs(3));
 
     println!("Before calling closed");
+
     handle_src.lock().unwrap().deref_mut().close();
     println!("After calling closed");
   }).join().unwrap();
