@@ -1,6 +1,6 @@
-use std::ops::DerefMut;
 use std::thread::{sleep, spawn};
 use std::time::Duration;
+
 use spotify_info::Handle;
 
 fn main() {
@@ -11,7 +11,7 @@ fn main() {
 
   // Create thread that will constantly listen for incoming calls
   let thread = spawn(move || {
-    let server = spotify_info::Listener::new_with_handle(handle).unwrap();
+    let mut server = spotify_info::Listener::new_with_handle(handle).unwrap();
 
     // This will not close instantly,
     for message in server.incoming().unwrap() {
@@ -24,10 +24,10 @@ fn main() {
 
   // This will close the listener after 3 seconds
   spawn(move || {
-    sleep(Duration::from_secs(3));
+    sleep(Duration::from_secs(10));
 
     println!("Before calling closed");
-    handle_src.lock().unwrap().deref_mut().close();
+    handle_src.close().unwrap();
     println!("After calling closed");
   }).join().unwrap();
 
