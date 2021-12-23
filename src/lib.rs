@@ -45,8 +45,12 @@ impl Default for TrackState {
 }
 
 /// Stores information about the track
-#[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub struct TrackInfo {
+  /// UID of track
+  pub uid: String,
+  // URI of track
+  pub uri: String,
   /// State of the track
   pub state: TrackState,
   /// Title of the track
@@ -62,15 +66,21 @@ pub struct TrackInfo {
   pub background_url: Option<String>,
 }
 
+impl TrackInfo {
+  pub fn eq_ignore_state(&self, other: &Self) -> bool {
+    self.uid == other.uid
+  }
+}
+
 /// Stores the currently playing track
 ///
 /// Cloning this is the same as doing [Arc::clone]
 #[derive(Default, Debug, Clone)]
-pub struct Handle {
+pub struct TrackHandle {
   latest: Arc<RwLock<Option<TrackInfo>>>,
 }
 
-impl Handle {
+impl TrackHandle {
   /// Reads the track that is currently stored, this clones the value.
   pub fn read(&self) -> Option<TrackInfo> {
     self.latest.try_read()
@@ -80,11 +90,11 @@ impl Handle {
   }
 }
 
-pub struct Listener {
+pub struct TrackListener {
   listener: TcpListener,
 }
 
-impl Listener {
+impl TrackListener {
   /// Binds to 127.0.0.1:19532
   pub async fn bind_default() -> std::io::Result<Self> {
     Self::bind_local(19532).await
@@ -107,7 +117,7 @@ impl Listener {
   /// and wait for new connections
   ///
   /// **NOTE** this is an infinite loop and will never return
-  pub async fn listen(&self, handle: Handle) {
+  pub async fn listen(&self, handle: TrackHandle) {
     loop {
       match self.listener.accept().await {
         Ok((stream, _)) => Self::handle_connection(stream, &handle).await,
@@ -116,7 +126,7 @@ impl Listener {
     }
   }
 
-  async fn handle_connection(stream: TcpStream, handle: &Handle) {
+  async fn handle_connection(stream: TcpStream, handle: &TrackHandle) {
     if let Ok(ws) = accept_async(stream).await {
       let incoming = ws.try_for_each(|msg| {
         if let Message::Text(msg) = msg {
@@ -130,20 +140,22 @@ impl Listener {
     };
   }
 
-  fn handle_message(message: String, handle: &Handle) {
+  fn handle_message(message: String, handle: &TrackHandle) {
     let data = message.split(';').collect::<Vec<_>>();
 
-    if data.len() < 6 {
+    if data.len() < 8 {
       return;
     }
 
     let info = TrackInfo {
-      state: TrackState::from_u32(data[0].parse().unwrap_or(0)),
-      title: data[1].to_string(),
-      album: data[2].to_string(),
-      artist: vec![data[3].to_string()],
-      cover_url: Some(data[4].to_string()),
-      background_url: Some(data[5].to_string()),
+      uid: data[0].to_string(),
+      uri: data[1].to_string(),
+      state: TrackState::from_u32(data[2].parse().unwrap_or(0)),
+      title: data[3].to_string(),
+      album: data[4].to_string(),
+      artist: vec![data[5].to_string()],
+      cover_url: Some(data[6].to_string()),
+      background_url: Some(data[7].to_string()),
     };
 
     *handle.latest.write().unwrap() = Some(info);

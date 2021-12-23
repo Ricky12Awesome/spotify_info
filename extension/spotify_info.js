@@ -14,6 +14,8 @@ function SpotifyInfo() {
   let ws_connected;
   let ws_data;
   let storage = {
+    uid: undefined,
+    uri: undefined,
     state: undefined,
     title: undefined,
     album: undefined,
@@ -27,8 +29,12 @@ function SpotifyInfo() {
       return;
     }
 
+    console.log(data);
+
     const meta = data.track.metadata;
     const local = {
+      uid: undefined,
+      uri: undefined,
       state: undefined,
       title: undefined,
       album: undefined,
@@ -48,6 +54,8 @@ function SpotifyInfo() {
         local.background === storage.background;
     }
 
+    local.uid = data.track.uid;
+    local.uri = data.track.uri;
     local.state = data.is_paused ? 1 : 2;
     local.title = meta.title;
     local.album = meta.album_title;
@@ -69,6 +77,8 @@ function SpotifyInfo() {
     if (!storage_eq()) {
       storage = local;
       ws_data = [
+        local.uid ?? "NONE",
+        local.uri ?? "NONE",
         local.state ?? 0,
         local.title ?? "NONE",
         local.album ?? "NONE",

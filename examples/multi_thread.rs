@@ -1,18 +1,18 @@
 use std::time::Duration;
 
-use spotify_info::{Handle, Listener};
+use spotify_info::{TrackHandle, TrackListener};
 
 #[tokio::main]
 async fn main() {
   // Create handle to be used for the main thread
   // that will constantly listen for incoming calls
-  let main_handle = Handle::default();
+  let main_handle = TrackHandle::default();
   // clones that handle to be used on another thread
   let handle = main_handle.clone();
 
   // Create thread that will constantly listen for incoming calls
   let main = tokio::spawn(async {
-    let listener = Listener::bind_default().await.unwrap();
+    let listener = TrackListener::bind_default().await.unwrap();
     listener.listen(main_handle).await;
   });
 
