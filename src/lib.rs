@@ -9,6 +9,7 @@ use std::sync::{Arc, RwLock};
 
 use futures_util::TryStreamExt;
 use tokio::net::{TcpListener, TcpStream};
+use tokio_tungstenite::accept_async;
 use tokio_tungstenite::tungstenite::Message;
 
 /// The state of the track weather it's **Playing**, **Paused** or **Stopped**
@@ -65,18 +66,19 @@ pub struct TrackInfo {
 ///
 /// Cloning this is the same as doing [Arc::clone]
 #[derive(Default, Debug, Clone)]
-pub struct Handle(Arc<RwLock<Option<TrackInfo>>>);
+pub struct Handle {
+  latest: Arc<RwLock<Option<TrackInfo>>>,
+}
 
 impl Handle {
   /// Reads the track that is currently stored, this clones the value.
   pub fn read(&self) -> Option<TrackInfo> {
-    self.0.try_read()
+    self.latest.try_read()
       .map(|it| it.clone())
       .ok()
       .flatten()
   }
 }
-
 
 pub struct Listener {
   listener: TcpListener,
@@ -115,7 +117,7 @@ impl Listener {
   }
 
   async fn handle_connection(stream: TcpStream, handle: &Handle) {
-    if let Ok(ws) = tokio_tungstenite::accept_async(stream).await {
+    if let Ok(ws) = accept_async(stream).await {
       let incoming = ws.try_for_each(|msg| {
         if let Message::Text(msg) = msg {
           Self::handle_message(msg, handle);
@@ -144,6 +146,6 @@ impl Listener {
       background_url: Some(data[5].to_string()),
     };
 
-    *handle.0.write().unwrap() = Some(info);
+    *handle.latest.write().unwrap() = Some(info);
   }
 }

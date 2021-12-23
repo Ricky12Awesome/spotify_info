@@ -11,6 +11,8 @@ function SpotifyInfo() {
   }
 
   let ws;
+  let ws_connected;
+  let ws_data;
   let storage = {
     state: undefined,
     title: undefined,
@@ -66,32 +68,39 @@ function SpotifyInfo() {
     // so it doesn't spam multiple messages
     if (!storage_eq()) {
       storage = local;
+      ws_data = [
+        local.state ?? 0,
+        local.title ?? "NONE",
+        local.album ?? "NONE",
+        local.artist ?? "NONE",
+        local.cover ?? "NONE",
+        local.background ?? "NONE"
+      ].join(";");
 
-      ws.send([
-          local.state ?? 0,
-          local.title ?? "NONE",
-          local.album ?? "NONE",
-          local.artist ?? "NONE",
-          local.cover ?? "NONE",
-          local.background ?? "NONE"
-        ].join(";")
-      );
+      if (ws_connected) {
+        ws.send(ws_data);
+      }
     }
   }
 
   Spicetify.CosmosAsync.sub("sp://player/v2/main", updateStorage);
 
   function init() {
+    ws_connected = false;
     ws = new WebSocket("ws://127.0.0.1:19532");
 
-    ws.onclose = () => {
-      setTimeout(init, 1000);
+    ws.onopen = () => {
+      ws_connected = true;
+      if (ws_data) ws.send(ws_data);
     };
+
+    ws.onclose = () => setTimeout(init, 1000);
   }
 
   init()
 
   window.onbeforeunload = () => {
+    ws_connected = false;
     ws.onclose = null;
     ws.close();
   }
