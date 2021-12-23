@@ -16,7 +16,7 @@ use tokio_tungstenite::tungstenite::Message;
 ///
 /// Default: Stopped
 #[repr(u32)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum TrackState {
   Playing = 2,
   Paused = 1,
@@ -45,7 +45,7 @@ impl Default for TrackState {
 }
 
 /// Stores information about the track
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TrackInfo {
   /// State of the track
   pub state: TrackState,
