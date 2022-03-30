@@ -66,9 +66,11 @@ function SpotifyInfo() {
     local.cover = cover?.indexOf("localfile") === -1 ? "https://i.scdn.co/image/" + cover.substring(cover.lastIndexOf(":") + 1) : undefined;
 
     try {
-      const uriBase62 = meta.artist_uri.substring(meta.artist_uri.lastIndexOf(":") + 1);
-      const artistInfo = await Spicetify.CosmosAsync.get(`hm://artist/v1/${uriBase62}/desktop?format=json`);
-      local.background = artistInfo.header_image.image;
+      const res = await Spicetify.CosmosAsync.get(
+        `https://api-partner.spotify.com/pathfinder/v1/query?operationName=queryArtistOverview&variables=%7B%22uri%22%3A%22${meta.artist_uri}%22%7D&extensions=%7B%22persistedQuery%22%3A%7B%22version%22%3A1%2C%22sha256Hash%22%3A%22433e28d1e949372d3ca3aa6c47975cff428b5dc37b12f5325d9213accadf770a%22%7D%7D`
+      )
+
+      local.background = res.data.artist.visuals.headerImage.sources[0].url
     } catch (e) {
       local.background = undefined;
     }
