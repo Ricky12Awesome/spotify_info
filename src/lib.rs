@@ -7,6 +7,7 @@
 use std::fmt::{Display, Formatter};
 use std::io::ErrorKind;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use futures_util::StreamExt;
 use tokio::net::{TcpListener, TcpStream};
@@ -64,8 +65,8 @@ pub struct TrackInfo {
   pub uri: String,
   /// State of the track
   pub state: TrackState,
-  /// Duration of the track in milliseconds
-  pub duration: u64,
+  /// Duration of the track
+  pub duration: Duration,
   /// Title of the track
   pub title: String,
   /// Album of the track
@@ -100,7 +101,7 @@ pub enum SpotifyEvent {
   ProgressChanged(f64),
 }
 
-pub struct TrackListener {
+pub struct SpotifyListener {
   listener: TcpListener,
 }
 
@@ -110,54 +111,61 @@ pub struct SpotifyConnection {
 }
 
 impl SpotifyConnection {
+  fn parse_track_info(data: &[&str]) -> TrackInfo {
+    TrackInfo {
+      uid: data[0].to_string(),
+      uri: data[1].to_string(),
+      state: TrackState::from_u32(data[2].parse().unwrap_or(0)),
+      duration: Duration::from_millis(data[3].parse().unwrap_or(0)),
+      title: data[4].to_string(),
+      album: data[5].to_string(),
+      artist: vec![data[6].to_string()],
+      cover_url: Some(data[7].to_string()).filter(|it| !it.contains("NONE")),
+      background_url: Some(data[8].to_string()).filter(|it| !it.contains("NONE")),
+    }
+  }
+
+  fn handle_message(message: String) -> Option<Result<SpotifyEvent, Error>> {
+    let mut data = message.split(';').collect::<Vec<_>>();
+    let invalid_data_err = Some(Err(Error::Io(std::io::Error::new(ErrorKind::InvalidData, "Invalid data"))));
+
+    if data.is_empty() {
+      return invalid_data_err;
+    }
+
+    match data.remove(0) {
+      "TRACK_CHANGED" if data.len() >= 9 => {
+        let info = Self::parse_track_info(&data);
+
+        Some(Ok(SpotifyEvent::TrackChanged(info)))
+      }
+      "STATE_CHANGED" if !data.is_empty() => {
+        let state = TrackState::from_u32(data[0].parse().unwrap_or(0));
+
+        Some(Ok(SpotifyEvent::StateChanged(state)))
+      }
+      "PROGRESS_CHANGED" if !data.is_empty() => {
+        let progress = data[0].parse().unwrap_or(0f64);
+
+        Some(Ok(SpotifyEvent::ProgressChanged(progress)))
+      }
+      _ => invalid_data_err
+    }
+  }
+
+  /// Waits for the next message to be received
   pub async fn next(&mut self) -> Option<Result<SpotifyEvent, Error>> {
     let message = self.ws.next().await?;
 
     match message {
-      Ok(Message::Text(message)) => {
-        let mut data = message.split(';').collect::<Vec<_>>();
-        let invalid_data_err = Some(Err(Error::Io(std::io::Error::new(ErrorKind::InvalidData, "Invalid data"))));
-
-        if data.is_empty() {
-          return invalid_data_err;
-        }
-
-        let event_name = data.remove(0);
-
-        match event_name {
-          "TRACK_CHANGED" if data.len() >= 9 => {
-            let info = TrackInfo {
-              uid: data[0].to_string(),
-              uri: data[1].to_string(),
-              state: TrackState::from_u32(data[2].parse().unwrap_or(0)),
-              duration: data[3].parse().unwrap_or(0),
-              title: data[4].to_string(),
-              album: data[5].to_string(),
-              artist: vec![data[6].to_string()],
-              cover_url: Some(data[7].to_string()).filter(|it| !it.contains("NONE")),
-              background_url: Some(data[8].to_string()).filter(|it| !it.contains("NONE")),
-            };
-
-            Some(Ok(SpotifyEvent::TrackChanged(info)))
-          }
-          "STATE_CHANGED" if !data.is_empty() => {
-            let state = TrackState::from_u32(data[0].parse().unwrap_or(0));
-
-            Some(Ok(SpotifyEvent::StateChanged(state)))
-          }
-          "PROGRESS_CHANGED" if !data.is_empty() => {
-            Some(Ok(SpotifyEvent::ProgressChanged(data[0].parse().unwrap_or(0f64))))
-          }
-          _ => invalid_data_err
-        }
-      }
-      Ok(_) => Some(Err(Error::Io(std::io::Error::new(ErrorKind::Unsupported, "Unsupported Message type, only supports Text")))),
+      Ok(Message::Text(message)) => Self::handle_message(message),
+      Ok(_) => Some(Err(Error::Io(std::io::Error::new(ErrorKind::Unsupported, "Unsupported message type, only supports Text")))),
       Err(err) => Some(Err(err))
     }
   }
 }
 
-impl TrackListener {
+impl SpotifyListener {
   /// Binds to 127.0.0.1:19532
   pub async fn bind_default() -> std::io::Result<Self> {
     Self::bind_local(19532).await
@@ -175,6 +183,7 @@ impl TrackListener {
     Ok(Self { listener })
   }
 
+  /// Establishes a websocket connection to the spotify extension
   pub async fn get_connection(&self) -> Result<SpotifyConnection, Error> {
     let (stream, _) = self.listener.accept().await.map_err(|_| Error::ConnectionClosed)?;
     let ws = accept_async(stream).await?;

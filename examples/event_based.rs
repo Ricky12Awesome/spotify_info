@@ -1,9 +1,9 @@
-use spotify_info::{SpotifyEvent, TrackListener};
+use spotify_info::{SpotifyEvent, SpotifyListener};
 
 #[tokio::main]
 async fn main() {
   // Create listener
-  let listener = TrackListener::bind_default().await.unwrap();
+  let listener = SpotifyListener::bind_default().await.unwrap();
 
   // Listen for incoming connections, if spotify closes, the loop keeps listening
   while let Ok(mut connection) = listener.get_connection().await {
