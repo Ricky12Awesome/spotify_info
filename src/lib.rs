@@ -4,13 +4,14 @@
 //!
 //! More information can be found on https://github.com/Ricky12Awesome/spotify_info
 
+use std::fmt::{Display, Formatter};
+use std::io::ErrorKind;
 use std::net::SocketAddr;
-use std::sync::{Arc, RwLock};
 
-use futures_util::TryStreamExt;
+use futures_util::StreamExt;
 use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::accept_async;
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::{accept_async, WebSocketStream};
+use tokio_tungstenite::tungstenite::{Error, Message};
 
 /// The state of the track weather it's **Playing**, **Paused** or **Stopped**
 ///
@@ -21,6 +22,16 @@ pub enum TrackState {
   Playing = 2,
   Paused = 1,
   Stopped = 0,
+}
+
+impl Display for TrackState {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    match self {
+      TrackState::Playing => write!(f, "Playing"),
+      TrackState::Paused => write!(f, "Paused"),
+      TrackState::Stopped => write!(f, "Stopped"),
+    }
+  }
 }
 
 impl TrackState {
@@ -53,6 +64,8 @@ pub struct TrackInfo {
   pub uri: String,
   /// State of the track
   pub state: TrackState,
+  /// Duration of the track in milliseconds
+  pub duration: u64,
   /// Title of the track
   pub title: String,
   /// Album of the track
@@ -72,26 +85,76 @@ impl TrackInfo {
   }
 }
 
-/// Stores the currently playing track
-///
-/// Cloning this is the same as doing [Arc::clone]
-#[derive(Default, Debug, Clone)]
-pub struct TrackHandle {
-  latest: Arc<RwLock<Option<TrackInfo>>>,
-}
-
-impl TrackHandle {
-  /// Reads the track that is currently stored, this clones the value.
-  pub fn read(&self) -> Option<TrackInfo> {
-    self.latest.try_read()
-      .map(|it| it.clone())
-      .ok()
-      .flatten()
-  }
+#[derive(Debug)]
+pub enum SpotifyEvent {
+  /// Gets called when user changes track
+  TrackChanged(TrackInfo),
+  /// Gets called when user changes state (if song is playing, paused or stopped)
+  ///
+  /// **NOTE**: Doesn't get called when user changes track
+  StateChanged(TrackState),
+  /// Gets called on a set interval, wont get called if player is paused or stopped,
+  /// Value is a percentage of the position between 0 and 1
+  ///
+  /// **NOTE**: Doesn't get called when user changes track
+  ProgressChanged(f64),
 }
 
 pub struct TrackListener {
   listener: TcpListener,
+}
+
+#[derive(Debug)]
+pub struct SpotifyConnection {
+  pub ws: WebSocketStream<TcpStream>,
+}
+
+impl SpotifyConnection {
+  pub async fn next(&mut self) -> Option<Result<SpotifyEvent, Error>> {
+    let message = self.ws.next().await?;
+
+    match message {
+      Ok(Message::Text(message)) => {
+        let mut data = message.split(';').collect::<Vec<_>>();
+        let invalid_data_err = Some(Err(Error::Io(std::io::Error::new(ErrorKind::InvalidData, "Invalid data"))));
+
+        if data.is_empty() {
+          return invalid_data_err;
+        }
+
+        let event_name = data.remove(0);
+
+        match event_name {
+          "TRACK_CHANGED" if data.len() >= 9 => {
+            let info = TrackInfo {
+              uid: data[0].to_string(),
+              uri: data[1].to_string(),
+              state: TrackState::from_u32(data[2].parse().unwrap_or(0)),
+              duration: data[3].parse().unwrap_or(0),
+              title: data[4].to_string(),
+              album: data[5].to_string(),
+              artist: vec![data[6].to_string()],
+              cover_url: Some(data[7].to_string()).filter(|it| !it.contains("NONE")),
+              background_url: Some(data[8].to_string()).filter(|it| !it.contains("NONE")),
+            };
+
+            Some(Ok(SpotifyEvent::TrackChanged(info)))
+          }
+          "STATE_CHANGED" if !data.is_empty() => {
+            let state = TrackState::from_u32(data[0].parse().unwrap_or(0));
+
+            Some(Ok(SpotifyEvent::StateChanged(state)))
+          }
+          "PROGRESS_CHANGED" if !data.is_empty() => {
+            Some(Ok(SpotifyEvent::ProgressChanged(data[0].parse().unwrap_or(0f64))))
+          }
+          _ => invalid_data_err
+        }
+      }
+      Ok(_) => Some(Err(Error::Io(std::io::Error::new(ErrorKind::Unsupported, "Unsupported Message type, only supports Text")))),
+      Err(err) => Some(Err(err))
+    }
+  }
 }
 
 impl TrackListener {
@@ -112,52 +175,10 @@ impl TrackListener {
     Ok(Self { listener })
   }
 
-  /// Listens for any incoming connections
-  /// if it fails getting a connection it will ignore it
-  /// and wait for new connections
-  ///
-  /// **NOTE** this is an infinite loop and will never return
-  pub async fn listen(&self, handle: TrackHandle) {
-    loop {
-      match self.listener.accept().await {
-        Ok((stream, _)) => Self::handle_connection(stream, &handle).await,
-        Err(_) => continue,
-      };
-    }
-  }
+  pub async fn get_connection(&self) -> Result<SpotifyConnection, Error> {
+    let (stream, _) = self.listener.accept().await.map_err(|_| Error::ConnectionClosed)?;
+    let ws = accept_async(stream).await?;
 
-  async fn handle_connection(stream: TcpStream, handle: &TrackHandle) {
-    if let Ok(ws) = accept_async(stream).await {
-      let incoming = ws.try_for_each(|msg| {
-        if let Message::Text(msg) = msg {
-          Self::handle_message(msg, handle);
-        }
-
-        futures_util::future::ok(())
-      });
-
-      incoming.await.unwrap();
-    };
-  }
-
-  fn handle_message(message: String, handle: &TrackHandle) {
-    let data = message.split(';').collect::<Vec<_>>();
-
-    if data.len() < 8 {
-      return;
-    }
-
-    let info = TrackInfo {
-      uid: data[0].to_string(),
-      uri: data[1].to_string(),
-      state: TrackState::from_u32(data[2].parse().unwrap_or(0)),
-      title: data[3].to_string(),
-      album: data[4].to_string(),
-      artist: vec![data[5].to_string()],
-      cover_url: Some(data[6].to_string()),
-      background_url: Some(data[7].to_string()),
-    };
-
-    *handle.latest.write().unwrap() = Some(info);
+    Ok(SpotifyConnection { ws })
   }
 }

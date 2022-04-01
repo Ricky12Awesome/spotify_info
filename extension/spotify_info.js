@@ -4,6 +4,23 @@
 
 /// <reference path="globals.d.ts" />
 
+// ----- SETTINGS -----
+
+// Change this if you want to use a custom port
+// make sure to also change it on the other end
+// default: 19532
+const port = 19532;
+
+// How often should this check for connections?
+// default: 1000
+const checkConnectionInterval = 1000;
+
+// How often should this send position updates in milliseconds
+// default: 250
+const positionUpdateInterval = 250;
+
+// --------------------
+
 function SpotifyInfo() {
   if (!Spicetify.CosmosAsync || !Spicetify.Platform) {
     setTimeout(SpotifyInfo, 500);
@@ -17,6 +34,7 @@ function SpotifyInfo() {
     uid: undefined,
     uri: undefined,
     state: undefined,
+    duration: undefined,
     title: undefined,
     album: undefined,
     artist: undefined,
@@ -29,13 +47,12 @@ function SpotifyInfo() {
       return;
     }
 
-    console.log(data);
-
     const meta = data.track.metadata;
     const local = {
       uid: undefined,
       uri: undefined,
       state: undefined,
+      duration: undefined,
       title: undefined,
       album: undefined,
       artist: undefined,
@@ -43,20 +60,10 @@ function SpotifyInfo() {
       background: undefined
     };
 
-    // doing local === storage or local == storage doesn't work,
-    // so I needed to do this
-    function storage_eq() {
-      return local.state === storage.state &&
-        local.title === storage.title &&
-        local.album === storage.album &&
-        local.artist === storage.artist &&
-        local.cover === storage.cover &&
-        local.background === storage.background;
-    }
-
     local.uid = data.track.uid;
     local.uri = data.track.uri;
     local.state = data.is_paused ? 1 : 2;
+    local.duration = meta.duration;
     local.title = meta.title;
     local.album = meta.album_title;
     local.artist = meta.artist_name;
@@ -76,21 +83,33 @@ function SpotifyInfo() {
     }
 
     // so it doesn't spam multiple messages
-    if (!storage_eq()) {
+    if (local.uid !== storage.uid) {
       storage = local;
       ws_data = [
-        local.uid ?? "NONE",
-        local.uri ?? "NONE",
+        local.uid,
+        local.uri,
         local.state ?? 0,
-        local.title ?? "NONE",
-        local.album ?? "NONE",
-        local.artist ?? "NONE",
+        local.duration,
+        local.title,
+        local.album,
+        local.artist,
         local.cover ?? "NONE",
         local.background ?? "NONE"
       ].join(";");
 
       if (ws_connected) {
-        ws.send(ws_data);
+        ws.send(`TRACK_CHANGED;${ws_data}`);
+      }
+    } else if (local.state !== storage.state) {
+      storage.state = local.state;
+
+      if (ws_connected) {
+        console.log("Sending State Changed Event")
+        ws.send(`STATE_CHANGED;${local.state ?? 0}`);
+
+        if (storage.state !== 2) {
+          ws.send(`PROGRESS_CHANGED;${Spicetify.Player.getProgressPercent()}`);
+        }
       }
     }
   }
@@ -99,17 +118,27 @@ function SpotifyInfo() {
 
   function init() {
     ws_connected = false;
-    ws = new WebSocket("ws://127.0.0.1:19532");
+    ws = new WebSocket(`ws://127.0.0.1:${port}`);
 
     ws.onopen = () => {
       ws_connected = true;
-      if (ws_data) ws.send(ws_data);
+      if (ws_data) ws.send(`TRACK_CHANGED;${ws_data}`);
     };
 
-    ws.onclose = () => setTimeout(init, 1000);
+    ws.onclose = () => {
+      ws_connected = false
+      setTimeout(init, checkConnectionInterval);
+    }
   }
 
-  init()
+  init();
+
+  setInterval(() => {
+    if (ws_connected && storage.state === 2) {
+      console.log("Sending Progress Changed Event")
+      ws.send(`PROGRESS_CHANGED;${Spicetify.Player.getProgressPercent()}`)
+    }
+  }, positionUpdateInterval);
 
   window.onbeforeunload = () => {
     ws_connected = false;
