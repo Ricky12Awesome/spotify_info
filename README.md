@@ -12,7 +12,7 @@ since Windows doesn't offer anyway to do this, on Linux I could use MPRIS, for m
 
 This will work for all desktop platforms (Windows, Linux, macOS)
 
-### API Usage
+## API Usage
 
 Examples can be found in the [examples](https://github.com/Ricky12Awesome/spotify_info/tree/main/examples) directory
 
@@ -41,12 +41,15 @@ async fn main() {
 }
 ```
 
+## Use API
+#### Add this to your Cargo.toml dependencies
+```toml
+spotify_info = "0.4"
+```
+
 ## Plans
 - [ ] Improve Documentation
 - [ ] Make instructions easy to understand for regular users
-- [x] ~~Async/Await support~~
-- [ ] Wait for new messages (currently when you call Handle::read, it gets the latest)
-- [ ] Track Length and Position support
 - [ ] When the track was created
 - [ ] What playlist the track is in
 
@@ -85,10 +88,4 @@ Run command
 from the terminal to uninstall the plugin
 
 More details about install extensions https://spicetify.app/docs/getting-started/extensions
-
-## Use API
-#### Add this to your Cargo.toml dependencies
-```toml
-spotify_info = "0.4"
-```
 
