@@ -1,3 +1,4 @@
+use std::time::Duration;
 use spotify_info::{SpotifyEvent, SpotifyListener};
 
 #[tokio::main]
@@ -7,6 +8,9 @@ async fn main() {
 
   // Listen for incoming connections, if spotify closes, the loop keeps listening
   while let Ok(mut connection) = listener.get_connection().await {
+
+    connection.set_progress_interval(Duration::from_secs(1)).await.unwrap();
+
     while let Some(Ok(event)) = connection.next().await {
       match event {
         // Gets called when user changed track

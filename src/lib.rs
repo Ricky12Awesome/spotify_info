@@ -9,7 +9,7 @@ use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{accept_async, WebSocketStream};
 use tokio_tungstenite::tungstenite::{Error, Message};
@@ -102,7 +102,7 @@ pub enum SpotifyEvent {
 }
 
 pub struct SpotifyListener {
-  listener: TcpListener,
+  pub listener: TcpListener,
 }
 
 #[derive(Debug)]
@@ -117,9 +117,9 @@ impl SpotifyConnection {
       uri: data[1].to_string(),
       state: TrackState::from_u32(data[2].parse().unwrap_or(0)),
       duration: Duration::from_millis(data[3].parse().unwrap_or(0)),
-      title: data[4].to_string(),
-      album: data[5].to_string(),
-      artist: vec![data[6].to_string()],
+      title: data[4].to_string().replace("${#{#{SEMI_COLON}#}#}$", ";"),
+      album: data[5].to_string().replace("${#{#{SEMI_COLON}#}#}$", ";"),
+      artist: vec![data[6].to_string().replace("${#{#{SEMI_COLON}#}#}$", ";")],
       cover_url: Some(data[7].to_string()).filter(|it| !it.contains("NONE")),
       background_url: Some(data[8].to_string()).filter(|it| !it.contains("NONE")),
     }
@@ -151,6 +151,16 @@ impl SpotifyConnection {
       }
       _ => invalid_data_err
     }
+  }
+
+  /// Sets how often it should update the progress,
+  ///
+  /// by default it's set to 1 second
+  pub async fn set_progress_interval(&mut self, interval: Duration) -> Result<(), Error> {
+    let ms = interval.as_millis();
+    let text = format!("SET_PROGRESS_INTERVAL;{}", ms);
+
+    self.ws.send(Message::Text(text)).await
   }
 
   /// Waits for the next message to be received

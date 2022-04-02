@@ -8,16 +8,21 @@
 
 // Change this if you want to use a custom port
 // make sure to also change it on the other end
+//
 // default: 19532
 const port = 19532;
 
 // How often should this check for connections?
+//
 // default: 1000
 const checkConnectionInterval = 1000;
 
 // How often should this send position updates in milliseconds
-// default: 250
-const positionUpdateInterval = 250;
+//
+// can be changed by the other end
+//
+// default: 1000
+let progressUpdateInterval = 1000;
 
 // --------------------
 
@@ -90,9 +95,10 @@ function SpotifyInfo() {
         local.uri,
         local.state ?? 0,
         local.duration,
-        local.title,
-        local.album,
-        local.artist,
+        // just for some weird edge case it messes things up
+        local.title.replace(";", "${#{#{SEMI_COLON}#}#}$"),
+        local.album.replace(";", "${#{#{SEMI_COLON}#}#}$"),
+        local.artist.replace(";", "${#{#{SEMI_COLON}#}#}$"),
         local.cover ?? "NONE",
         local.background ?? "NONE"
       ].join(";");
@@ -104,7 +110,6 @@ function SpotifyInfo() {
       storage.state = local.state;
 
       if (ws_connected) {
-        console.log("Sending State Changed Event")
         ws.send(`STATE_CHANGED;${local.state ?? 0}`);
 
         if (storage.state !== 2) {
@@ -126,19 +131,42 @@ function SpotifyInfo() {
     };
 
     ws.onclose = () => {
-      ws_connected = false
+      ws_connected = false;
       setTimeout(init, checkConnectionInterval);
-    }
+    };
+
+
+    ws.onmessage = (message) => {
+      /**
+       * @type {Array<string>}
+       */
+      let data = message.data.split(";");
+
+      if (data.length === 0) {
+        return;
+      }
+
+      if (data[0] === "SET_PROGRESS_INTERVAL") {
+        let n = Number.parseInt(data[1]);
+
+        if (!isNaN(n)) {
+          progressUpdateInterval = n;
+        }
+      }
+    };
   }
 
   init();
 
-  setInterval(() => {
+  const progressInterval = () => {
     if (ws_connected && storage.state === 2) {
-      console.log("Sending Progress Changed Event")
       ws.send(`PROGRESS_CHANGED;${Spicetify.Player.getProgressPercent()}`)
     }
-  }, positionUpdateInterval);
+
+    setTimeout(progressInterval, progressUpdateInterval)
+  };
+
+  setTimeout(progressInterval, progressUpdateInterval);
 
   window.onbeforeunload = () => {
     ws_connected = false;
