@@ -44,7 +44,7 @@ async fn main() {
 ## Use API
 #### Add this to your Cargo.toml dependencies
 ```toml
-spotify_info = "0.4"
+spotify_info = "0.5"
 ```
 
 ## Plans

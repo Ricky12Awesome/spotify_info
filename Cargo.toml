@@ -1,6 +1,6 @@
 [package]
 name = "spotify_info"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Ricky12Awesome"]
 description = "Gets metadata from spotify using a spicetify extension using websockets"
