@@ -34,7 +34,6 @@ function SpotifyInfo() {
 
   let ws;
   let ws_connected;
-  let ws_data;
   let storage = {
     uid: undefined,
     uri: undefined,
@@ -53,22 +52,12 @@ function SpotifyInfo() {
     }
 
     const meta = data.track.metadata;
-    const local = {
-      uid: undefined,
-      uri: undefined,
-      state: undefined,
-      duration: undefined,
-      title: undefined,
-      album: undefined,
-      artist: undefined,
-      cover: undefined,
-      background: undefined
-    };
+    const local = {};
 
     local.uid = data.track.uid;
     local.uri = data.track.uri;
     local.state = data.is_paused ? 1 : 2;
-    local.duration = meta.duration;
+    local.duration = Number.parseInt(meta.duration);
     local.title = meta.title;
     local.album = meta.album_title;
     local.artist = meta.artist_name;
@@ -90,30 +79,24 @@ function SpotifyInfo() {
     // so it doesn't spam multiple messages
     if (local.uid !== storage.uid) {
       storage = local;
-      ws_data = [
-        local.uid,
-        local.uri,
-        local.state ?? 0,
-        local.duration,
-        // just for some weird edge case it messes things up
-        local.title.replace(";", "${#{#{SEMI_COLON}#}#}$"),
-        local.album.replace(";", "${#{#{SEMI_COLON}#}#}$"),
-        local.artist.replace(";", "${#{#{SEMI_COLON}#}#}$"),
-        local.cover ?? "NONE",
-        local.background ?? "NONE"
-      ].join(";");
-
+      
       if (ws_connected) {
-        ws.send(`TRACK_CHANGED;${ws_data}`);
+        ws.send(JSON.stringify({
+          "TrackChanged": storage
+        }));
       }
     } else if (local.state !== storage.state) {
       storage.state = local.state;
 
       if (ws_connected) {
-        ws.send(`STATE_CHANGED;${local.state ?? 0}`);
+        ws.send(JSON.stringify({
+          "StateChanged": local.state ?? 0
+        }));
 
         if (storage.state !== 2) {
-          ws.send(`PROGRESS_CHANGED;${Spicetify.Player.getProgressPercent()}`);
+          ws.send(JSON.stringify({
+            "ProgressChanged": Spicetify.Player.getProgressPercent()
+          }));
         }
       }
     }
@@ -125,9 +108,15 @@ function SpotifyInfo() {
     ws_connected = false;
     ws = new WebSocket(`ws://127.0.0.1:${port}`);
 
+
     ws.onopen = () => {
       ws_connected = true;
-      if (ws_data) ws.send(`TRACK_CHANGED;${ws_data}`);
+
+      if (storage) {
+        ws.send(JSON.stringify({
+          "TrackChanged": storage
+        }));
+      }
     };
 
     ws.onclose = () => {
@@ -137,18 +126,12 @@ function SpotifyInfo() {
 
 
     ws.onmessage = (message) => {
-      /**
-       * @type {Array<string>}
-       */
-      let data = message.data.split(";");
+      let data = JSON.parse(message.data);
+      let interval = data["ProgressInterval"];
 
-      if (data.length === 0) {
-        return;
-      }
-
-      if (data[0] === "SET_PROGRESS_INTERVAL") {
-        let n = Number.parseInt(data[1]);
-
+      if (interval) {
+        let n = Number.parseInt(interval);
+        
         if (!isNaN(n)) {
           progressUpdateInterval = n;
         }
@@ -160,7 +143,9 @@ function SpotifyInfo() {
 
   const progressInterval = () => {
     if (ws_connected && storage.state === 2) {
-      ws.send(`PROGRESS_CHANGED;${Spicetify.Player.getProgressPercent()}`)
+      ws.send(JSON.stringify({
+        "ProgressChanged": Spicetify.Player.getProgressPercent()
+      }));
     }
 
     setTimeout(progressInterval, progressUpdateInterval)

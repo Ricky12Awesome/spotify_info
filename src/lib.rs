@@ -11,17 +11,11 @@ use std::{
   time::Duration,
 };
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-#[cfg(feature = "serde_json")]
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{from_str, to_string};
 
-#[cfg(feature = "miniserde")]
-use miniserde::json::{from_str, to_string};
-#[cfg(feature = "miniserde")]
-use miniserde::{Deserialize, Serialize};
-
 use futures_util::{SinkExt, StreamExt};
+use serde_with::{serde_as, DurationMilliSeconds};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{
   accept_async,
@@ -56,12 +50,31 @@ impl TrackState {
   /// 1 will be [Self::Paused]
   ///
   /// anything else will be [Self::Stopped]
-  pub fn from_u32(n: u32) -> Self {
+  pub const fn from_u32(n: u32) -> Self {
     match n {
       2 => Self::Playing,
       1 => Self::Paused,
       _ => Self::Stopped,
     }
+  }
+}
+
+impl Serialize for TrackState {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    serializer.serialize_u32(*self as u32)
+  }
+}
+
+impl<'de> Deserialize<'de> for TrackState {
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: Deserializer<'de>,
+  {
+    let n = u32::deserialize(deserializer)?;
+    Ok(Self::from_u32(n))
   }
 }
 
@@ -72,7 +85,8 @@ impl Default for TrackState {
 }
 
 /// Stores information about the track
-#[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd)]
+#[serde_as]
+#[derive(Debug, Clone, Default, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub struct TrackInfo {
   /// UID of track
   pub uid: String,
@@ -81,18 +95,19 @@ pub struct TrackInfo {
   /// State of the track
   pub state: TrackState,
   /// Duration of the track
+  #[serde_as(as = "DurationMilliSeconds<u64>")]
   pub duration: Duration,
   /// Title of the track
   pub title: String,
   /// Album of the track
   pub album: String,
   /// Vec since there can be multiple artists
-  pub artist: Vec<String>,
+  pub artist: String,
   /// Cover art of the track, option because it may not exist
-  pub cover_url: Option<String>,
+  pub cover: Option<String>,
   /// Background art of the track, option because it may nto exist
   /// (when you hit the "full screen" thing in the bottom-right corner of spotify)
-  pub background_url: Option<String>,
+  pub background: Option<String>,
 }
 
 impl TrackInfo {
@@ -101,7 +116,7 @@ impl TrackInfo {
   }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum SpotifyEvent {
   /// Gets called when user changes track
   TrackChanged(TrackInfo),
@@ -116,6 +131,13 @@ pub enum SpotifyEvent {
   ProgressChanged(f64),
 }
 
+/// Message to send to spotify
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SpotifyMessage {
+  /// Updates the progress update interval from the spotify client
+  ProgressUpdateInterval(u64),
+}
+
 pub struct SpotifyListener {
   pub listener: TcpListener,
 }
@@ -126,57 +148,18 @@ pub struct SpotifyConnection {
 }
 
 impl SpotifyConnection {
-  fn parse_track_info(data: &[&str]) -> TrackInfo {
-    TrackInfo {
-      uid: data[0].to_string(),
-      uri: data[1].to_string(),
-      state: TrackState::from_u32(data[2].parse().unwrap_or(0)),
-      duration: Duration::from_millis(data[3].parse().unwrap_or(0)),
-      title: data[4].to_string().replace("${#{#{SEMI_COLON}#}#}$", ";"),
-      album: data[5].to_string().replace("${#{#{SEMI_COLON}#}#}$", ";"),
-      artist: vec![data[6].to_string().replace("${#{#{SEMI_COLON}#}#}$", ";")],
-      cover_url: Some(data[7].to_string()).filter(|it| !it.contains("NONE")),
-      background_url: Some(data[8].to_string()).filter(|it| !it.contains("NONE")),
-    }
-  }
-
-  fn handle_message(message: String) -> Option<Result<SpotifyEvent, Error>> {
-    let mut data = message.split(';').collect::<Vec<_>>();
-    let invalid_data_err = Some(Err(Error::Io(std::io::Error::new(
-      ErrorKind::InvalidData,
-      "Invalid data",
-    ))));
-
-    if data.is_empty() {
-      return invalid_data_err;
-    }
-
-    match data.remove(0) {
-      "TRACK_CHANGED" if data.len() >= 9 => {
-        let info = Self::parse_track_info(&data);
-
-        Some(Ok(SpotifyEvent::TrackChanged(info)))
-      }
-      "STATE_CHANGED" if !data.is_empty() => {
-        let state = TrackState::from_u32(data[0].parse().unwrap_or(0));
-
-        Some(Ok(SpotifyEvent::StateChanged(state)))
-      }
-      "PROGRESS_CHANGED" if !data.is_empty() => {
-        let progress = data[0].parse().unwrap_or(0f64);
-
-        Some(Ok(SpotifyEvent::ProgressChanged(progress)))
-      }
-      _ => invalid_data_err,
-    }
+  fn handle_message(message: String) -> Result<SpotifyEvent, Error> {
+    from_str::<SpotifyEvent>(&message)
+      .map_err(|_| Error::Io(std::io::Error::new(ErrorKind::InvalidData, "Invalid json")))
   }
 
   /// Sets how often it should update the progress,
   ///
   /// by default it's set to 1 second
   pub async fn set_progress_interval(&mut self, interval: Duration) -> Result<(), Error> {
-    let ms = interval.as_millis();
-    let text = format!("SET_PROGRESS_INTERVAL;{ms}");
+    let ms = interval.as_millis() as u64;
+    let interval = SpotifyMessage::ProgressUpdateInterval(ms);
+    let text = to_string(&interval).unwrap();
 
     self.ws.send(Message::Text(text)).await
   }
@@ -186,7 +169,7 @@ impl SpotifyConnection {
     let message = self.ws.next().await?;
 
     match message {
-      Ok(Message::Text(message)) => Self::handle_message(message),
+      Ok(Message::Text(message)) => Some(Self::handle_message(message)),
       Ok(_) => Some(Err(Error::Io(std::io::Error::new(
         ErrorKind::Unsupported,
         "Unsupported message type, only supports Text",
