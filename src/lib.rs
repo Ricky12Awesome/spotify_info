@@ -4,15 +4,30 @@
 //!
 //! More information can be found on https://github.com/Ricky12Awesome/spotify_info
 
-use std::fmt::{Display, Formatter};
-use std::io::ErrorKind;
-use std::net::SocketAddr;
-use std::time::Duration;
+use std::{
+  fmt::{Display, Formatter},
+  io::ErrorKind,
+  net::SocketAddr,
+  time::Duration,
+};
+
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+#[cfg(feature = "serde_json")]
+use serde_json::{from_str, to_string};
+
+#[cfg(feature = "miniserde")]
+use miniserde::json::{from_str, to_string};
+#[cfg(feature = "miniserde")]
+use miniserde::{Deserialize, Serialize};
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio_tungstenite::{accept_async, WebSocketStream};
-use tokio_tungstenite::tungstenite::{Error, Message};
+use tokio_tungstenite::{
+  accept_async,
+  tungstenite::{Error, Message},
+  WebSocketStream,
+};
 
 /// The state of the track weather it's **Playing**, **Paused** or **Stopped**
 ///
@@ -45,7 +60,7 @@ impl TrackState {
     match n {
       2 => Self::Playing,
       1 => Self::Paused,
-      _ => Self::Stopped
+      _ => Self::Stopped,
     }
   }
 }
@@ -127,7 +142,10 @@ impl SpotifyConnection {
 
   fn handle_message(message: String) -> Option<Result<SpotifyEvent, Error>> {
     let mut data = message.split(';').collect::<Vec<_>>();
-    let invalid_data_err = Some(Err(Error::Io(std::io::Error::new(ErrorKind::InvalidData, "Invalid data"))));
+    let invalid_data_err = Some(Err(Error::Io(std::io::Error::new(
+      ErrorKind::InvalidData,
+      "Invalid data",
+    ))));
 
     if data.is_empty() {
       return invalid_data_err;
@@ -149,7 +167,7 @@ impl SpotifyConnection {
 
         Some(Ok(SpotifyEvent::ProgressChanged(progress)))
       }
-      _ => invalid_data_err
+      _ => invalid_data_err,
     }
   }
 
@@ -158,7 +176,7 @@ impl SpotifyConnection {
   /// by default it's set to 1 second
   pub async fn set_progress_interval(&mut self, interval: Duration) -> Result<(), Error> {
     let ms = interval.as_millis();
-    let text = format!("SET_PROGRESS_INTERVAL;{}", ms);
+    let text = format!("SET_PROGRESS_INTERVAL;{ms}");
 
     self.ws.send(Message::Text(text)).await
   }
@@ -169,8 +187,11 @@ impl SpotifyConnection {
 
     match message {
       Ok(Message::Text(message)) => Self::handle_message(message),
-      Ok(_) => Some(Err(Error::Io(std::io::Error::new(ErrorKind::Unsupported, "Unsupported message type, only supports Text")))),
-      Err(err) => Some(Err(err))
+      Ok(_) => Some(Err(Error::Io(std::io::Error::new(
+        ErrorKind::Unsupported,
+        "Unsupported message type, only supports Text",
+      )))),
+      Err(err) => Some(Err(err)),
     }
   }
 }
@@ -183,7 +204,7 @@ impl SpotifyListener {
 
   /// Binds to 127.0.0.1 with a custom port
   pub async fn bind_local(port: u16) -> std::io::Result<Self> {
-    Self::bind(format!("127.0.0.1:{}", port).parse().unwrap()).await
+    Self::bind(format!("127.0.0.1:{port}").parse().unwrap()).await
   }
 
   /// Binds to the given address, same as calling [TcpListener::bind(addr)]
@@ -195,7 +216,8 @@ impl SpotifyListener {
 
   /// Establishes a websocket connection to the spotify extension
   pub async fn get_connection(&self) -> Result<SpotifyConnection, Error> {
-    let (stream, _) = self.listener.accept().await.map_err(|_| Error::ConnectionClosed)?;
+    let listener = self.listener.accept().await;
+    let (stream, _) = listener.map_err(|_| Error::ConnectionClosed)?;
     let ws = accept_async(stream).await?;
 
     Ok(SpotifyConnection { ws })
