@@ -11,10 +11,8 @@ use std::{
   time::Duration,
 };
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::{from_str, to_string};
-
 use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_with::{serde_as, DurationMilliSeconds};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_tungstenite::{
@@ -116,7 +114,7 @@ impl TrackInfo {
   }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialOrd, PartialEq, Serialize, Deserialize)]
 pub enum SpotifyEvent {
   /// Gets called when user changes track
   TrackChanged(TrackInfo),
@@ -149,8 +147,8 @@ pub struct SpotifyConnection {
 
 impl SpotifyConnection {
   fn handle_message(message: String) -> Result<SpotifyEvent, Error> {
-    from_str::<SpotifyEvent>(&message)
-      .map_err(|_| Error::Io(std::io::Error::new(ErrorKind::InvalidData, "Invalid json")))
+    serde_json::from_str::<SpotifyEvent>(&message)
+      .map_err(|err| Error::Io(std::io::Error::new(ErrorKind::InvalidData, err)))
   }
 
   /// Sets how often it should update the progress,
@@ -159,7 +157,13 @@ impl SpotifyConnection {
   pub async fn set_progress_interval(&mut self, interval: Duration) -> Result<(), Error> {
     let ms = interval.as_millis() as u64;
     let interval = SpotifyMessage::ProgressUpdateInterval(ms);
-    let text = to_string(&interval).unwrap();
+    let text = serde_json::to_string(&interval).unwrap_or_else(|_| {
+      // only panics if serialize was implemented incorrectly
+      panic!(
+        "failed to turn {} into a json string",
+        std::any::type_name::<SpotifyMessage>()
+      )
+    });
 
     self.ws.send(Message::Text(text)).await
   }
