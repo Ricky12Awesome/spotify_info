@@ -136,10 +136,61 @@ pub enum SpotifyMessage {
   ProgressUpdateInterval(u64),
 }
 
+/// Wraps around [TcpListener]
+///
+/// Examples
+/// --------
+///
+/// ```rust
+/// use spotify_info::{SpotifyListener, SpotifyEvent};
+///
+/// // Create a listener using local ip and default port
+/// let listener = SpotifyListener::bind_default().await.unwrap();
+///
+/// // Create a listener using local ip with custom port
+/// let listener = SpotifyListener::bind_local(69420).await.unwrap();
+///
+/// // Create a listener using a custom address
+/// let listener = SpotifyListener::bind("127.0.0.1:69420".into()).await.unwrap();
+///
+/// // Listen for incoming connections, if spotify closes, the loop keeps listening
+/// while let Ok(mut connection) = listener.get_connection().await {
+///   // handle connection
+/// }
+/// ```
+#[derive(Debug)]
 pub struct SpotifyListener {
   pub listener: TcpListener,
 }
 
+
+/// Wraps around [WebSocketStream<TcpStream>]
+///
+/// Examples
+/// --------
+///
+/// ```rust
+/// use spotify_info::{SpotifyListener, SpotifyEvent};
+///
+/// // To get a connection you need to create a lister
+/// let listener = SpotifyListener::bind_default().await.unwrap();
+///
+/// // Then listen for incoming connections
+/// while let Ok(mut connection) = listener.get_connection().await {
+///   // Listen for events
+///   while let Some(Ok(event)) = connection.next().await {
+///    match event {
+///      // Gets called when user changed track
+///      SpotifyEvent::TrackChanged(info) => println!("Changed track to {info:?}"),
+///      // Gets called when user changes state (if song is playing, paused or stopped)
+///      SpotifyEvent::StateChanged(state) => println!("Changed state to {state}"),
+///      // Gets called on a set interval, wont get called if player is paused or stopped,
+///      // Value is a percentage of the position between 0 and 1
+///      SpotifyEvent::ProgressChanged(time) => println!("Changed progress to {time}")
+///    }
+///  }
+/// }
+/// ```
 #[derive(Debug)]
 pub struct SpotifyConnection {
   pub ws: WebSocketStream<TcpStream>,
